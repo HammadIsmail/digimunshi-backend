@@ -4,17 +4,22 @@
 
 DigiMunshi Backend is a high-performance voice accounting and digital khata API. It enables small shopkeepers and kiryana store owners to manage their credit and payments naturally using conversational Urdu and Roman Urdu voice commands.
 
+- 📱 **Mobile Frontend Repository**: [digimunshi-mobile](https://github.com/HammadIsmail/digimunshi-mobile)
+
 ---
 
 ## 🌟 Key Features
 
 - **Urdu-Native Voice Processing**: Accurately transcribes spoken Urdu (audio formats: WAV, M4A) via Uplift AI Scribe STT.
-- **Ultra-Fast LLM Tool Agent**: Powered by Groq's high-speed inference engine running OpenAI OSS LLM with structured function/tool calling.
+- **Ultra-Fast LLM Tool Agent**: Powered by Groq's high-speed inference engine running `llama-3.3-70b-versatile` with structured tool calling.
   - Understands colloquial Urdu number phrases (*"پانچ سو"*, *"ڈھائی ہزار"*, *"ek hazar"*, *"dedh sau"*).
-  - Handles credit additions (`record_udhaar`) and debt reductions/payments (`record_payment`).
+  - Handles credit additions (`record_udhaar`) with item descriptions (*"بیڈ"*, *"چینی"*, *"راشن"*).
+  - Handles debt reductions and payments (`record_payment` / *"kam kar do"*, *"vasool ho gaye"*).
+  - Supports verbal debtor breakdowns (`list_debtors` / *"kin kin ka udhaar baqi hai"*).
   - Supports balance queries (`query_balance_single`, `query_balance_all`) and account clearance (`delete_customer_khata`).
-- **Urdu Voice Synthesis**: Speaks back in natural Pakistani Urdu with Uplift AI Orator (`prime-time-anchor` voice).
-- **PostgreSQL Ledger**: ACID-compliant transactional double-entry ledger with automatic balance tracking and audit trails.
+- **Urdu Voice Synthesis & Phonetic Guardrail**: Synthesizes speech strictly in authentic Urdu script (نستعلیق) via Uplift AI Orator (`prime-time-anchor` voice) with fallback transliteration (`to_urdu_script`) for natural native pronunciation.
+- **Stateless Base64 Audio**: Returns audio directly as Base64 data URIs, eliminating disk dependencies on ephemeral cloud hosts (e.g. Render).
+- **PostgreSQL Ledger**: ACID-compliant transactional double-entry ledger with automatic balance tracking and audit trails on Neon Serverless Postgres.
 - **Safety Guardrails**: Two-step confirmation for returning customer debt additions, high-value amounts, and khata clearance.
 
 ---
@@ -22,10 +27,11 @@ DigiMunshi Backend is a high-performance voice accounting and digital khata API.
 ## 🛠️ Tech Stack
 
 - **Framework**: [FastAPI](https://fastapi.tiangolo.com/) (Python 3.11+)
-- **Database**: PostgreSQL with async [SQLAlchemy 2.0](https://www.sqlalchemy.org/) & [asyncpg](https://github.com/MagicStack/asyncpg)
-- **AI / LLM**: [Groq](https://groq.com/) API (LPU inference engine)
+- **Database**: PostgreSQL with async [SQLAlchemy 2.0](https://www.sqlalchemy.org/) & [asyncpg](https://github.com/MagicStack/asyncpg) (Neon connection pool resilience)
+- **AI / LLM**: [Groq](https://groq.com/) API (`llama-3.3-70b-versatile` LPU inference engine)
 - **Voice AI**: [Uplift AI](https://upliftai.org/) (Scribe STT + Orator Urdu TTS)
 - **Authentication**: JWT (JSON Web Tokens) with bcrypt password hashing
+- **Deployment**: Render-ready with `.python-version` (Python 3.11.9)
 
 ---
 
@@ -57,19 +63,17 @@ pip install -r requirements.txt
 
 ### 3. Environment Configuration
 
-Copy `.env.example` to `.env` and fill in your credentials:
-
-```bash
-cp .env.example .env
-```
+Create a `.env` file in the `backend/` directory:
 
 ```env
 DATABASE_URL=postgresql+asyncpg://<username>:<password>@<host>/<database>?ssl=require
-SECRET_KEY=your_super_secret_jwt_key
+JWT_SECRET_KEY=your_super_secret_jwt_key
 GROQ_API_KEY=gsk_...
-GROQ_MODEL=openai/gpt-oss-120b
-UPLIFT_API_KEY=your_uplift_api_key
-UPLIFT_TTS_VOICE=prime-time-anchor
+GROQ_MODEL=llama-3.3-70b-versatile
+UPLIFTAI_API_KEY=your_uplift_api_key
+UPLIFTAI_API_URL=https://api.upliftai.org
+UPLIFTAI_TTS_VOICE=prime-time-anchor
+CORS_ORIGINS=["http://localhost:8081","http://localhost:19006"]
 ```
 
 ### 4. Run the Server
