@@ -13,7 +13,14 @@ def get_engine():
         url = settings.DATABASE_URL
         if "?" in url:
             url = url.split("?")[0]
-        _engine = create_async_engine(url, echo=False, connect_args={"ssl": "require"})
+        _engine = create_async_engine(
+            url,
+            echo=False,
+            pool_pre_ping=True,
+            pool_recycle=300,
+            connect_args={"ssl": "require"}
+        )
+
     return _engine
 
 
