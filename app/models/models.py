@@ -70,8 +70,10 @@ class LedgerEntry(Base):
     amount = Column(Numeric(12, 2), nullable=False)
     entry_type = Column(SAEnum(EntryType), nullable=False)
     status = Column(SAEnum(EntryStatus), default=EntryStatus.confirmed, nullable=False)
+    description = Column(String, nullable=True)
     raw_transcript = Column(Text, nullable=True)
     stt_confidence = Column(Numeric(3, 2), nullable=True)
+
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     confirmed_at = Column(DateTime(timezone=True), nullable=True)
 

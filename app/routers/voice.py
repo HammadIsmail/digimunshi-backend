@@ -28,8 +28,12 @@ logger = logging.getLogger(__name__)
 
 RESPONSES = {
     "confirm_add_existing": "{name} کا پہلے سے ادھار {balance} روپے تھا۔ کیا اس میں {amount} روپے اور ادھار لکھ دوں؟",
+    "confirm_add_existing_item": "{name} کا پہلے سے ادھار {balance} روپے تھا۔ کیا اس میں {item} کے {amount} روپے اور ادھار لکھ دوں؟",
     "saved_new_customer": "ٹھیک ہے، {name} کا نیا کھاتہ بنا کے {amount} روپے لکھ دیے۔",
+    "saved_new_customer_item": "ٹھیک ہے، {name} کا نیا کھاتہ بنا کے {item} کے {amount} روپے لکھ دیے۔",
     "saved_existing": "ٹھیک ہے، {name} کے کھاتے میں {amount} روپے ادھار لکھ دیے۔",
+    "saved_existing_item": "ٹھیک ہے، {name} کے کھاتے میں {item} کے {amount} روپے ادھار لکھ دیے۔",
+
     "saved_payment": "ٹھیک ہے، {name} کے کھاتے میں سے {amount} روپے کم کر دیے ہیں۔ اب باقی ادھار {balance} روپے ہے۔",
     "saved": "ٹھیک ہے، {name} کا کھاتہ اپ ڈیٹ کر دیا گیا ہے۔",
     "query_single": "{name} کا {amount} روپے ادھار باقی ہے۔",
@@ -163,6 +167,7 @@ async def process_voice(
     intent = intent_result["intent"]
     customer_name = intent_result.get("customer_name")
     amount = intent_result.get("amount")
+    item = intent_result.get("item")
 
     if pending_action and intent in ("confirm", "cancel"):
         confirmed = (intent == "confirm")
@@ -179,6 +184,7 @@ async def process_voice(
             pending_action_id=None,
             response_text=response_text,
             response_audio_url=audio_url,
+            ledger_updated=confirmed,
             resolved_entities={"confirmed": confirmed, "ledger_entry_id": str(entry_id) if entry_id else None}
         )
 
@@ -190,6 +196,39 @@ async def process_voice(
             pending_action_id=None, response_text=response_text,
             response_audio_url=audio_url, resolved_entities={}
         )
+
+    if intent == "list_debtors":
+        result = await db.execute(
+            select(
+                Customer.name,
+                balance_expression().label("balance")
+            )
+            .join(LedgerEntry, (Customer.id == LedgerEntry.customer_id) & (LedgerEntry.status == EntryStatus.confirmed))
+            .where(Customer.shop_id == current_shop.id)
+            .group_by(Customer.id, Customer.name)
+            .having(balance_expression() > 0)
+            .order_by(balance_expression().desc())
+        )
+        debtors = result.all()
+        if not debtors:
+            response_text = "اس وقت کسی بھی گاہک کا کوئی ادھار باقی نہیں ہے۔"
+        else:
+            debtor_phrases = [f"{d.name} کے {int(d.balance)} روپے" for d in debtors[:5]]
+            if len(debtor_phrases) == 1:
+                response_text = f"صرف {debtor_phrases[0]} ادھار باقی ہے۔"
+            else:
+                response_text = "، ".join(debtor_phrases[:-1]) + " اور " + debtor_phrases[-1] + " ادھار باقی ہیں۔"
+            if len(debtors) > 5:
+                response_text += f" اس کے علاوہ مزید {len(debtors) - 5} گاہکوں کے بقایا جات ہیں۔"
+
+        audio_url = await synthesize_speech(response_text)
+        return VoiceProcessResponse(
+            transcript=transcript, intent=intent, requires_confirmation=False,
+            pending_action_id=None, response_text=response_text,
+            response_audio_url=audio_url,
+            resolved_entities={"debtors_count": len(debtors)}
+        )
+
 
     if intent == "add_customer" and customer_name:
         matches = await find_matching_customers(db, current_shop.id, customer_name)
@@ -291,13 +330,18 @@ async def process_voice(
                     shop_id=current_shop.id,
                     customer_id=new_customer.id,
                     amount=amount,
+                    description=item,
                     entry_type=EntryType.udhaar,
                     status=EntryStatus.confirmed,
                 )
                 db.add(entry)
                 await db.flush()
 
-                response_text = get_response_text("saved_new_customer", name=new_customer.name, amount=int(amount))
+                if item:
+                    response_text = get_response_text("saved_new_customer_item", name=new_customer.name, amount=int(amount), item=item)
+                else:
+                    response_text = get_response_text("saved_new_customer", name=new_customer.name, amount=int(amount))
+
                 audio_url = await synthesize_speech(response_text)
                 return VoiceProcessResponse(
                     transcript=transcript, intent=intent, requires_confirmation=False,
@@ -308,10 +352,12 @@ async def process_voice(
                         "customer_id": str(new_customer.id),
                         "customer_name": new_customer.name,
                         "amount": amount,
+                        "item": item,
                         "is_new_customer": True,
                         "ledger_entry_id": str(entry.id)
                     }
                 )
+
 
 
             response_text = f"{customer_name} نام کا کوئی گاہک کھاتے میں موجود نہیں ہے۔"
@@ -400,7 +446,10 @@ async def process_voice(
                 confirm_text = get_response_text("unusual_amount", amount=int(amount))
             else:
                 # Stage 4: Return Customer — Existing-Customer Confirmation with previous balance readback!
-                confirm_text = get_response_text("confirm_add_existing", name=customer.name, balance=int(current_balance), amount=int(amount))
+                if item:
+                    confirm_text = get_response_text("confirm_add_existing_item", name=customer.name, balance=int(current_balance), amount=int(amount), item=item)
+                else:
+                    confirm_text = get_response_text("confirm_add_existing", name=customer.name, balance=int(current_balance), amount=int(amount))
 
             action = await create_pending_action(
                 db, current_shop.id, session_id, intent,
@@ -408,6 +457,7 @@ async def process_voice(
                     "customer_id": str(customer.id),
                     "customer_name": customer.name,
                     "amount": amount,
+                    "item": item,
                     "previous_balance": current_balance
                 },
                 confirm_text
@@ -421,9 +471,11 @@ async def process_voice(
                     "customer_id": str(customer.id),
                     "customer_name": customer.name,
                     "amount": amount,
+                    "item": item,
                     "previous_balance": current_balance
                 }
             )
+
 
     response_text = get_response_text("unknown_intent")
     audio_url = await synthesize_speech(response_text)
@@ -460,33 +512,44 @@ async def apply_pending_action(
             db.add(customer)
             await db.flush()
 
+        item = payload.get("item")
         entry = LedgerEntry(
             shop_id=current_shop.id,
             customer_id=customer.id,
             amount=payload["amount"],
+            description=item,
             entry_type=EntryType.udhaar,
             status=EntryStatus.confirmed,
         )
         db.add(entry)
         await db.flush()
 
-        response_text = get_response_text("saved_new_customer", name=customer.name, amount=int(payload["amount"]))
+        if item:
+            response_text = get_response_text("saved_new_customer_item", name=customer.name, amount=int(payload["amount"]), item=item)
+        else:
+            response_text = get_response_text("saved_new_customer", name=customer.name, amount=int(payload["amount"]))
         audio_url = await synthesize_speech(response_text)
         return response_text, audio_url, entry.id
 
     if action.intent == "add_entry":
+        item = payload.get("item")
         entry = LedgerEntry(
             shop_id=current_shop.id,
             customer_id=UUID(payload["customer_id"]),
             amount=payload["amount"],
+            description=item,
             entry_type=EntryType.udhaar,
             status=EntryStatus.confirmed,
         )
         db.add(entry)
         await db.flush()
-        response_text = get_response_text("saved_existing", name=payload["customer_name"], amount=int(payload["amount"]))
+        if item:
+            response_text = get_response_text("saved_existing_item", name=payload["customer_name"], amount=int(payload["amount"]), item=item)
+        else:
+            response_text = get_response_text("saved_existing", name=payload["customer_name"], amount=int(payload["amount"]))
         audio_url = await synthesize_speech(response_text)
         return response_text, audio_url, entry.id
+
 
     if action.intent == "record_payment":
         entry = LedgerEntry(

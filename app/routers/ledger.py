@@ -129,8 +129,10 @@ async def get_entries(
             id=entry.id,
             amount=float(entry.amount),
             entry_type=entry.entry_type.value if hasattr(entry.entry_type, "value") else str(entry.entry_type),
+            description=entry.description,
             created_at=entry.created_at.isoformat()
         )
         for entry in entries
     ]
+
 

@@ -76,5 +76,7 @@ class EntryResponse(BaseModel):
     id: UUID
     amount: float
     entry_type: str
+    description: Optional[str] = None
     created_at: str
+
 

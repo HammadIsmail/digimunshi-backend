@@ -13,12 +13,13 @@ GROQ_TOOLS = [
         "type": "function",
         "function": {
             "name": "record_udhaar",
-            "description": "Record a credit (udhaar) entry for a customer. Used when customer takes items on credit or user wants to add/write udhaar (e.g. 'Ali ko 500 rupay udhaar likho', 'Ali ke khate mein 500 likh do').",
+            "description": "Record a credit (udhaar) entry for a customer. Used when customer takes items on credit or user wants to add/write udhaar (e.g. 'Ali ko 500 rupay udhaar likho', 'Hammad ne 20,000 ka bed udhaar liya hai', 'Kamran ke khate mein cheeni ke 400 likh do').",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "customer_name": {"type": "string", "description": "Customer name in English or Urdu script"},
-                    "amount": {"type": "number", "description": "Amount in Pakistani Rupees"}
+                    "amount": {"type": "number", "description": "Amount in Pakistani Rupees"},
+                    "item": {"type": "string", "description": "Item, goods, or reason for udhaar (e.g. 'bed', 'raashan', 'cheeni', 'cement', 'mobile', 'doodh', etc.). Extract if mentioned, otherwise omit."}
                 },
                 "required": ["customer_name", "amount"]
             }
@@ -27,8 +28,17 @@ GROQ_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "list_debtors",
+            "description": "List the names of all customers who currently have outstanding udhaar along with their individual balances. Used when user asks 'Gahkon ke naam batao jin ka udhaar rehta hai', 'Kin kin ka udhaar baqi hai?', 'Kis kis se paise lene hain?', 'Udhaar walon ki list batao', 'Khatay walon ke naam batao'.",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "record_payment",
-            "description": "Record a payment or balance reduction when a customer pays back money, clears part of their debt, or user asks to reduce/deduct (e.g. 'Ali ke khate me se 500 kam kar do', '500 vasool ho gaye', '500 jama kar do', '500 wapas diye', '500 minus kar do').",
+            "description": "Record a payment or balance reduction when a customer pays back money, clears part of their debt, or user asks to reduce/deduct (e.g. 'Ali ke khate me se 500 kam kar do', '500 vasool ho gaye', '500 jama kar do', '500 wapas दिए', '500 minus kar do').",
+
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -107,15 +117,17 @@ GROQ_TOOLS = [
 
 GROQ_SYSTEM_PROMPT = """You are an expert AI assistant for a Pakistani shopkeeper's digital ledger app (DigiMunshi).
 The user speaks in Urdu or Roman Urdu. Call the appropriate tool based on user intent:
-1. When debt/credit is ADDED or loaned: (udhaar likho, udhaar do, mazeed likh do, baqi likho) -> call `record_udhaar`
-2. When debt is REDUCED, subtracted, or paid back: (kam kar do, minus kar do, jama kar lo, vasool ho gaye, wapas kiye, paise de diye, kat lo) -> call `record_payment`
-3. When checking how much a single customer owes: (kitna udhaar hai, kitne paise hain, kitna baqi hai) -> call `query_balance_single`
-4. When checking total udhaar for all customers: (sab ka kitna hai, kul udhaar kitna hai, total baqi) -> call `query_balance_all`
-5. When wiping/clearing a khata completely: (khata clear kar do, poora mita do, khatam kar do) -> call `delete_customer_khata`
-6. When answering a confirmation prompt:
+1. When debt/credit is ADDED or loaned: (udhaar likho, udhaar do, mazeed likh do, baqi likho, bed udhaar liya, cheeni li, rashan liya) -> call `record_udhaar`. If the user mentions what item or goods were taken (e.g. 'bed', 'raashan', 'cheeni', 'cement', 'doodh'), extract it in the `item` field.
+2. When the user asks for the list or names of customers who owe money: (gahkon ke naam batao jin ka udhaar rehta hai, kin kin ka udhaar baqi hai, kis kis se paise lene hain, udhaar walon ke naam) -> call `list_debtors`.
+3. When debt is REDUCED, subtracted, or paid back: (kam kar do, minus kar do, jama kar lo, vasool ho gaye, wapas diye, paise de diye, kat lo) -> call `record_payment`
+4. When checking how much a single customer owes: (kitna udhaar hai, kitne paise hain, kitna baqi hai) -> call `query_balance_single`
+5. When checking total overall udhaar amount for all customers: (sab ka kitna hai, kul udhaar kitna hai, total baqi) -> call `query_balance_all`
+6. When wiping/clearing a khata completely: (khata clear kar do, poora mita do, khatam kar do) -> call `delete_customer_khata`
+7. When answering a confirmation prompt:
    - haan, ji, theek hai, sahi hai, likh do, kar do, haan kar do -> confirmed: true
    - nahi, cancel, mat karo, rehne do, roko -> confirmed: false
-Always accurately extract the customer name and numerical amount in Rupees (e.g. 'paanch sau' -> 500, 'teen sau' -> 300, 'hazar' -> 1000)."""
+Always accurately extract the customer name, item (if mentioned), and numerical amount in Rupees (e.g. 'paanch sau' -> 500, 'teen sau' -> 300, 'hazar' -> 1000)."""
+
 
 
 def extract_urdu_amount(text: str) -> float | None:
@@ -165,9 +177,14 @@ def extract_urdu_amount(text: str) -> float | None:
 def fallback_classify_intent(transcript: str) -> dict:
     t = transcript.lower()
 
-    # 1. query_balance_all
+    # 1. list_debtors (customers with outstanding debt)
+    if any(p in t for p in ["گاہکوں کے نام", "کس کس کا ادھار", "کن کن کا ادھار", "کس کس سے پیسے", "udhaar walon", "gahkon ke naam", "kin kin ka", "list batao"]):
+        return {"intent": "list_debtors", "customer_name": None, "amount": None, "confidence": 0.95}
+
+    # 1b. query_balance_all
     if any(p in t for p in ["سب کا", "کل ادھار", "sab ka", "kul udhaar", "tamam", "تمام"]):
         return {"intent": "query_balance_all", "customer_name": None, "amount": None, "confidence": 0.95}
+
 
     # 2. delete_entry
     if any(p in t for p in ["مٹا", "ختم", "ڈیلیٹ", "mita", "khatam", "delete", "clear"]):
@@ -242,6 +259,14 @@ async def classify_intent(transcript: str) -> dict:
                         "intent": "add_entry",
                         "customer_name": args.get("customer_name"),
                         "amount": float(args["amount"]) if args.get("amount") is not None else None,
+                        "item": args.get("item"),
+                        "confidence": 0.98
+                    }
+                elif fn_name == "list_debtors":
+                    return {
+                        "intent": "list_debtors",
+                        "customer_name": None,
+                        "amount": None,
                         "confidence": 0.98
                     }
                 elif fn_name == "record_payment":
@@ -251,6 +276,7 @@ async def classify_intent(transcript: str) -> dict:
                         "amount": float(args["amount"]) if args.get("amount") is not None else None,
                         "confidence": 0.98
                     }
+
                 elif fn_name == "create_customer":
                     return {
                         "intent": "add_customer",
