@@ -5,6 +5,7 @@
 DigiMunshi Backend is a high-performance voice accounting and digital khata API. It enables small shopkeepers and kiryana store owners to manage their credit and payments naturally using conversational Urdu and Roman Urdu voice commands.
 
 - 📱 **Mobile Frontend Repository**: [digimunshi-mobile](https://github.com/HammadIsmail/digimunshi-mobile)
+- 🌐 **Web Landing Page**: [digimunshi-landing-page](https://github.com/HammadIsmail/digimunshi-landing-page)
 
 ---
 
