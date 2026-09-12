@@ -403,6 +403,21 @@ async def process_voice(
 
         if len(matches) == 0:
             if intent == "add_entry" and amount:
+                # Unusual Amount Guardrail Check (Enforce on new customer as well!)
+                if await check_unusual_amount(current_shop, db, amount):
+                    reason = get_response_text("unusual_amount", amount=int(amount))
+                    action = await create_pending_action(
+                        db, current_shop.id, session_id, "create_customer_and_add_entry",
+                        {"customer_name": customer_name, "amount": amount, "item": item}, reason
+                    )
+                    audio_url = await synthesize_speech(reason)
+                    return VoiceProcessResponse(
+                        transcript=transcript, intent=intent, requires_confirmation=True,
+                        pending_action_id=action.id, response_text=reason,
+                        response_audio_url=audio_url,
+                        resolved_entities={"customer_name": customer_name, "amount": amount, "item": item, "is_new_customer": True}
+                    )
+
                 # Stage 3: First Voice Entry — New Customer (Direct Create with ZERO friction)
                 new_customer = Customer(
                     shop_id=current_shop.id,

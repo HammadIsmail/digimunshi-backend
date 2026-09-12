@@ -126,15 +126,39 @@ The user speaks in Urdu or Roman Urdu. Call the appropriate tool based on user i
    - haan, ji, theek hai, sahi hai, likh do, kar do, haan kar do -> confirmed: true
    - nahi, cancel, mat karo, rehne do, roko -> confirmed: false
 
-CRITICAL RULE FOR FLAWLESS URDU PRONUNCIATION:
-You MUST ALWAYS output `customer_name` and `item` strictly in authentic Urdu script (نستعلیق / اردو رسم الخط) e.g. 'علی', 'حماد', 'اسلم', 'کامران', 'بیڈ', 'چینی', 'دودھ', 'راشن', 'سیمنٹ'.
-NEVER output customer_name or item in Roman Urdu or English alphabet (do NOT output 'Ali', output 'علی'; do NOT output 'bed', output 'بیڈ'; do NOT output 'Hammad', output 'حماد').
-Always accurately extract numerical amount in Rupees (e.g. 'paanch sau' -> 500, 'teen sau' -> 300, 'hazar' -> 1000, 'bees hazar' -> 20000)."""
+CRITICAL RULES FOR AMOUNTS & PAKISTANI CURRENCY:
+1. In Pakistan, amounts of 100,000 or greater are ALWAYS spoken as 'Lakh' (لاکھ) e.g., '5 lakh' = 500,000. People NEVER say '500 hazar' to mean 500,000.
+2. If the user transcript has a number of 100 or greater followed by 'ہزار' or 'hazar' (e.g., '500 ہزار', '300 ہزار', '500 hazar'), this is a speech-to-text artifact where the user said 500 or 300. The amount is 500 or 300, NEVER 500,000.
+3. 'hazar' / 'ہزار' multiplier ONLY applies to numbers under 100 (e.g., '5 hazar' -> 5000, '50 hazar' -> 50000, 'پانچ ہزار' -> 5000).
+4. Always accurately extract numerical amount in Rupees (e.g. 'paanch sau' -> 500, 'teen sau' -> 300, 'hazar' -> 1000, 'bees hazar' -> 20000)."""
 
+
+def sanitize_urdu_transcript(text: str) -> str:
+    """Sanitize STT anomalies like 500 followed by trailing hazar/ہزار."""
+    if not text:
+        return ""
+    # Strip trailing hazar if preceded by numbers >= 100 or 'سو'/'sau'
+    text = re.sub(r'(\b\d{3,})\s*(?:ہزار|hazar|hazaar)\b', r'\1', text, flags=re.IGNORECASE)
+    text = re.sub(r'(\b(?:سو|sau|so))\s*(?:ہزار|hazar|hazaar)\b', r'\1', text, flags=re.IGNORECASE)
+    return text
 
 
 def extract_urdu_amount(text: str) -> float | None:
-    # 1. Match explicit digits: e.g. 500, 1000
+    text = sanitize_urdu_transcript(text)
+
+    # 1. Match explicit digits with multiplier word (e.g. 20 hazar, 5 lakh)
+    m_mult = re.search(r'\b(\d+(?:\.\d+)?)\s*(ہزار|hazar|hazaar|لاکھ|lakh|سو|sau|so)\b', text, flags=re.IGNORECASE)
+    if m_mult:
+        val = float(m_mult.group(1))
+        unit = m_mult.group(2).lower()
+        if unit in ('ہزار', 'hazar', 'hazaar'):
+            return val * 1000
+        elif unit in ('لاکھ', 'lakh'):
+            return val * 100000
+        elif unit in ('سو', 'sau', 'so'):
+            return val * 100
+
+    # 2. Match standalone explicit digits: e.g. 500, 1000
     m = re.search(r'\b(\d+(?:\.\d+)?)\b', text)
     if m:
         return float(m.group(1))
@@ -236,6 +260,8 @@ async def classify_intent(transcript: str) -> dict:
     """Classify intent using Groq LLM tool calling with fallback to rule-based parser."""
     if not transcript or not transcript.strip():
         return {"intent": "unknown", "customer_name": None, "amount": None, "confidence": 0.0}
+
+    transcript = sanitize_urdu_transcript(transcript)
 
     if settings.GROQ_API_KEY:
         try:
