@@ -2,11 +2,68 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.models.models import Shop, Customer, LedgerEntry, EntryType, EntryStatus, PendingAction, ActionStatus
 from datetime import datetime, timezone
+import difflib
 import json
 
 
+
+def normalize_urdu_name(text: str) -> str:
+    """Normalize common Urdu character variations (Yeh, Kaf, Heh, Alif)."""
+    if not text:
+        return ""
+    text = text.strip()
+    replacements = {
+        'ك': 'ک',
+        'ي': 'ی',
+        'ى': 'ی',
+        'ئ': 'ی',
+        'ة': 'ہ',
+        'ه': 'ہ',
+        'ھ': 'ہ',
+        'آ': 'ا',
+        'أ': 'ا',
+        'إ': 'ا',
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text.lower()
+
+
+def _is_name_match(input_name: str, db_name: str) -> bool:
+    """
+    Careful name matching to prevent erroneous matches like 'حماد' -> 'احمد'.
+    Character overlap or anagrams (ح-م-ا-د) must NEVER falsely match distinct people!
+    """
+    in_norm = normalize_urdu_name(input_name)
+    db_norm = normalize_urdu_name(db_name)
+
+    if not in_norm or not db_norm:
+        return False
+
+    # 1. Exact match
+    if in_norm == db_norm:
+        return True
+
+    # 2. Word / Token match (e.g. "علی" in "علی قریشی" or "Ali" in "Ali Qureshi")
+    in_words = in_norm.split()
+    db_words = db_norm.split()
+    if any(w in db_words for w in in_words) or any(w in in_words for w in db_words):
+        return True
+
+    # 3. For short names (<= 4 chars like حماد, احمد, علی, عمر), distinct names must not fuzzy match!
+    if len(in_norm) <= 4 or len(db_norm) <= 4:
+        return False
+
+    # 4. Must start with the same letter
+    if in_norm[0] != db_norm[0]:
+        return False
+
+    # 5. Sequence matcher with high threshold (>= 0.88)
+    return difflib.SequenceMatcher(None, in_norm, db_norm).ratio() >= 0.88
+
+
 async def find_matching_customers(db: AsyncSession, shop_id, name: str) -> list:
-    """Fuzzy match customer name within a shop."""
+    """Accurately match customer name within a shop's ledger."""
     result = await db.execute(
         select(Customer)
         .where(Customer.shop_id == shop_id)
@@ -16,27 +73,14 @@ async def find_matching_customers(db: AsyncSession, shop_id, name: str) -> list:
     if not name:
         return []
 
-    name_lower = name.lower().strip()
+    name_clean = name.strip()
     matches = []
     for c in customers:
-        c_name_lower = c.name.lower()
-        if name_lower in c_name_lower or c_name_lower in name_lower:
-            matches.append(c)
-        elif _fuzzy_match(name_lower, c_name_lower):
+        if _is_name_match(name_clean, c.name):
             matches.append(c)
 
     return matches
 
-
-def _fuzzy_match(input_name: str, db_name: str) -> bool:
-    """Simple fuzzy matching using character overlap."""
-    if not input_name or not db_name:
-        return False
-    input_set = set(input_name)
-    db_set = set(db_name)
-    overlap = len(input_set & db_set)
-    max_len = max(len(input_set), len(db_set))
-    return overlap / max_len > 0.7 if max_len > 0 else False
 
 
 async def check_unusual_amount(shop: Shop, db: AsyncSession, amount: float) -> bool:
