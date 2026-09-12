@@ -303,6 +303,7 @@ async def process_voice(
                     transcript=transcript, intent=intent, requires_confirmation=False,
                     pending_action_id=None, response_text=response_text,
                     response_audio_url=audio_url,
+                    ledger_updated=True,
                     resolved_entities={
                         "customer_id": str(new_customer.id),
                         "customer_name": new_customer.name,
@@ -311,6 +312,7 @@ async def process_voice(
                         "ledger_entry_id": str(entry.id)
                     }
                 )
+
 
             response_text = f"{customer_name} نام کا کوئی گاہک کھاتے میں موجود نہیں ہے۔"
             audio_url = await synthesize_speech(response_text)
@@ -365,6 +367,7 @@ async def process_voice(
                 transcript=transcript, intent=intent, requires_confirmation=False,
                 pending_action_id=None, response_text=response_text,
                 response_audio_url=audio_url,
+                ledger_updated=True,
                 resolved_entities={
                     "customer_id": str(customer.id),
                     "customer_name": customer.name,
@@ -374,6 +377,7 @@ async def process_voice(
                     "entry_type": "payment"
                 }
             )
+
 
         if intent == "delete_entry":
             # Stage 9: Clearing a Khata — read back current balance and require explicit yes
@@ -539,7 +543,9 @@ async def confirm_voice(
         response_text=response_text,
         response_audio_url=audio_url,
         ledger_entry_id=entry_id,
+        ledger_updated=request.confirmed,
     )
+
 
 
 @router.get("/voice/audio/{audio_id}.mp3")

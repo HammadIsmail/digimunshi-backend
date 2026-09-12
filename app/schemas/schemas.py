@@ -55,6 +55,7 @@ class VoiceProcessResponse(BaseModel):
     response_text: str
     response_audio_url: Optional[str] = None
     resolved_entities: dict
+    ledger_updated: bool = False
 
 
 class VoiceConfirmRequest(BaseModel):
@@ -67,6 +68,8 @@ class VoiceConfirmResponse(BaseModel):
     response_text: str
     response_audio_url: Optional[str] = None
     ledger_entry_id: Optional[UUID] = None
+    ledger_updated: bool = False
+
 
 
 class EntryResponse(BaseModel):
