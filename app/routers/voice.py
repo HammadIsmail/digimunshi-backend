@@ -35,11 +35,13 @@ RESPONSES = {
     "saved_existing_item": "ٹھیک ہے، {name} کے کھاتے میں {item} کے {amount} روپے ادھار لکھ دیے۔",
 
     "saved_payment": "ٹھیک ہے، {name} کے کھاتے میں سے {amount} روپے کم کر دیے ہیں۔ اب باقی ادھار {balance} روپے ہے۔",
+    "confirm_payment": "کیا {name} کے کھاتے میں سے {amount} روپے وصولی درج کر دوں؟",
     "saved": "ٹھیک ہے، {name} کا کھاتہ اپ ڈیٹ کر دیا گیا ہے۔",
     "query_single": "{name} کا {amount} روپے ادھار باقی ہے۔",
     "query_all": "سب ملا کر {total} روپے ادھار باقی ہے، {count} گاہکوں کا۔",
     "disambiguate": "دو {name} ہیں — {options} میں سے کون سے؟",
     "delete_confirm": "{name} کا پورا کھاتہ صاف کرنا ہے، {amount} روپے — پکا؟",
+    "delete_no_name": "کس کا کھاتہ صاف کرنا ہے؟ گاہک کا نام بتائیے۔",
     "deleted": "ٹھیک ہے، {name} کا کھاتہ صاف کر دیا گیا ہے۔",
     "unusual_amount": "{amount} روپے؟ کیا میں نے صحیح سنا؟",
     "low_confidence": "ٹھیک سے سن نہیں سکا، دوبارہ بولیے؟",
@@ -398,6 +400,15 @@ async def process_voice(
             resolved_entities={"customer_id": str(customer.id), "customer_name": customer.name, "balance": balance}
         )
 
+    if intent == "delete_entry" and not customer_name:
+        response_text = get_response_text("delete_no_name")
+        audio_url = await synthesize_speech(response_text)
+        return VoiceProcessResponse(
+            transcript=transcript, intent=intent, requires_confirmation=False,
+            pending_action_id=None, response_text=response_text,
+            response_audio_url=audio_url, resolved_entities={}
+        )
+
     if intent in ("add_entry", "record_payment", "delete_entry") and customer_name:
         matches = await find_matching_customers(db, current_shop.id, customer_name)
 
@@ -496,6 +507,33 @@ async def process_voice(
 
         # Handling payment / debt reduction (kam kar do / vasool ho gaye)
         if intent == "record_payment" and amount:
+            # Payment confirmation required for amounts above 1 thousand
+            if amount > 1000:
+                confirm_text = get_response_text("confirm_payment", name=customer.name, amount=int(amount))
+                action = await create_pending_action(
+                    db, current_shop.id, session_id, intent,
+                    {
+                        "customer_id": str(customer.id),
+                        "customer_name": customer.name,
+                        "amount": amount,
+                        "previous_balance": current_balance
+                    },
+                    confirm_text
+                )
+                audio_url = await synthesize_speech(confirm_text)
+                return VoiceProcessResponse(
+                    transcript=transcript, intent=intent, requires_confirmation=True,
+                    pending_action_id=action.id, response_text=confirm_text,
+                    response_audio_url=audio_url,
+                    resolved_entities={
+                        "customer_id": str(customer.id),
+                        "customer_name": customer.name,
+                        "amount": amount,
+                        "previous_balance": current_balance,
+                        "entry_type": "payment"
+                    }
+                )
+
             entry = LedgerEntry(
                 shop_id=current_shop.id,
                 customer_id=customer.id,

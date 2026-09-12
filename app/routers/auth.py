@@ -5,9 +5,11 @@ from sqlalchemy import select
 import hashlib
 
 from app.core.database import get_db
+from app.core.deps import get_current_shop
 from app.core.security import hash_pin, verify_pin, create_access_token, create_refresh_token, decode_token
 from app.models.models import Shop, RefreshToken
-from app.schemas.schemas import ShopRegister, ShopLogin, TokenRefresh, TokenResponse, ShopResponse
+from app.schemas.schemas import ShopRegister, ShopLogin, TokenRefresh, TokenResponse, ShopResponse, ShopInfoResponse
+
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -154,3 +156,13 @@ async def logout(refresh_data: TokenRefresh, db: AsyncSession = Depends(get_db))
 
     if refresh_record:
         refresh_record.revoked_at = datetime.now(timezone.utc)
+
+
+@router.get("/me", response_model=ShopInfoResponse)
+async def get_me(current_shop: Shop = Depends(get_current_shop)):
+    return ShopInfoResponse(
+        shop_id=current_shop.id,
+        owner_name=current_shop.owner_name,
+        phone_number=current_shop.phone_number
+    )
+

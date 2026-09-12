@@ -170,10 +170,15 @@ def extract_urdu_amount(text: str) -> float | None:
         'لاکھ': 100000, 'lakh': 100000
     }
     digits = {
+        'ڈیڑھ': 1.5, 'deedh': 1.5, 'derh': 1.5,
+        'ڈھائی': 2.5, 'dhai': 2.5,
         'ایک': 1, 'دو': 2, 'تین': 3, 'چار': 4, 'پانچ': 5, 'چھ': 6, 'سات': 7, 'آٹھ': 8, 'نو': 9, 'دس': 10,
-        'بیس': 20, 'پچاس': 50,
+        'گیارہ': 11, 'بارہ': 12, 'تیرہ': 13, 'چودہ': 14, 'پندرہ': 15, 'سولہ': 16, 'سترہ': 17, 'اٹھارہ': 18, 'انیس': 19,
+        'بیس': 20, 'پچیس': 25, 'تیس': 30, 'پینتیس': 35, 'چالیس': 40, 'پچاس': 50, 'ساٹھ': 60, 'ستر': 70, 'اسی': 80, 'نوے': 90,
         'ek': 1, 'do': 2, 'teen': 3, 'char': 4, 'paanch': 5, 'che': 6, 'saat': 7, 'aath': 8, 'nau': 9, 'das': 10,
-        'bees': 20, 'pachaas': 50, 'pachas': 50
+        'gyarah': 11, 'barah': 12, 'terah': 13, 'chaudah': 14, 'chodah': 14, 'pandrah': 15, 'solah': 16, 'satrah': 17, 'atharah': 18, 'unnees': 19,
+        'bees': 20, 'pachees': 25, 'tees': 30, 'paintis': 35, 'chalis': 40, 'pachaas': 50, 'pachas': 50,
+        'sath': 60, 'sattar': 70, 'assi': 80, 'nave': 90
     }
 
     words = text.split()
@@ -212,11 +217,12 @@ def fallback_classify_intent(transcript: str) -> dict:
     if any(p in t for p in ["سب کا", "کل ادھار", "sab ka", "kul udhaar", "tamam", "تمام"]):
         return {"intent": "query_balance_all", "customer_name": None, "amount": None, "confidence": 0.95}
 
-
-    # 2. delete_entry
-    if any(p in t for p in ["مٹا", "ختم", "ڈیلیٹ", "mita", "khatam", "delete", "clear"]):
-        m = re.search(r'([\w\u0600-\u06FF]+)\s*(?:کا|کے|ki|ka|ke)\s+(?:کھاتہ|khata|entry)', transcript)
+    # 2. delete_entry (Destructive action: clear/delete/wipe khata)
+    if any(p in t for p in ["مٹا", "ختم", "ڈیلیٹ", "صاف", "mita", "khatam", "delete", "clear", "saaf"]):
+        m = re.search(r'([\w\u0600-\u06FF]+)\s*(?:کا|کے|کو|ki|ka|ke|ko)\s*(?:پورا|poora)?\s*(?:کھاتہ|کھاتا|کھاتے|حساب|khata|entry|hisab|account)?', transcript)
         name = m.group(1) if m else None
+        if name in ["سب", "کل", "کچھ", "sab", "kul", "poora", "پورا"]:
+            name = None
         return {"intent": "delete_entry", "customer_name": name, "amount": None, "confidence": 0.9}
 
     # 3. query_balance_single
@@ -236,14 +242,15 @@ def fallback_classify_intent(transcript: str) -> dict:
         if name and name.lower() not in ["سب", "کل", "کچھ", "sab", "kul", "kholo", "banao", "add", "karo"]:
             return {"intent": "add_customer", "customer_name": name, "amount": None, "confidence": 0.9}
 
-    # 5. record_payment (reducing debt, payment received, 'kam kar do', 'vasool', 'jama')
+    # 5. record_payment (reducing debt, payment received, 'kam kar do', 'vasool', 'jama', 'wapas')
     amount = extract_urdu_amount(transcript)
-    if amount is not None and any(p in t for p in ["کم", "وصول", "جمع", "واپس", "مائنس", "کاٹ", "kam", "vasool", "jama", "wapas", "minus", "kat", "paid"]):
-        m = re.search(r'([\w\u0600-\u06FF]+)\s*(?:کو|کا|کے|میں|سے|ko|ka|ke|me|se)\b', transcript)
-        name = m.group(1) if m else None
-        if name in ["سب", "کل", "کچھ", "sab", "kul"]:
-            name = None
-        return {"intent": "record_payment", "customer_name": name, "amount": amount, "confidence": 0.95 if name else 0.8}
+    if amount is not None and any(p in t for p in ["کم", "وصول", "جمع", "واپس", "مائنس", "کاٹ", "ادا", "kam", "vasool", "jama", "wapas", "minus", "kat", "paid", "ada"]):
+        if "ادھار" not in t and "udhaar" not in t:
+            m = re.search(r'([\w\u0600-\u06FF]+)\s*(?:کو|کا|کے|میں|سے|نے|ko|ka|ke|me|se|ne)\b', transcript)
+            name = m.group(1) if m else None
+            if name in ["سب", "کل", "کچھ", "sab", "kul"]:
+                name = None
+            return {"intent": "record_payment", "customer_name": name, "amount": amount, "confidence": 0.95 if name else 0.8}
 
     # 6. add_entry
     if amount is not None or any(p in t for p in ["ادھار", "دیے", "روپے", "udhaar", "diye", "rupay", "likh"]):
@@ -254,6 +261,7 @@ def fallback_classify_intent(transcript: str) -> dict:
         return {"intent": "add_entry", "customer_name": name, "amount": amount, "confidence": 0.95 if name and amount else 0.75}
 
     return {"intent": "unknown", "customer_name": None, "amount": None, "confidence": 0.0}
+
 
 
 async def classify_intent(transcript: str) -> dict:

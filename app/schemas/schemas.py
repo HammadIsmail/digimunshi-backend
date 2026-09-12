@@ -30,6 +30,23 @@ class ShopResponse(BaseModel):
     refresh_token: str
 
 
+class ShopInfoResponse(BaseModel):
+    shop_id: UUID
+    owner_name: str
+    phone_number: str
+
+
+class ClearKhataRequest(BaseModel):
+    confirmed: bool = False
+
+
+class ClearKhataResponse(BaseModel):
+    status: str
+    message: str
+    cleared_entries_count: int
+
+
+
 class CustomerResponse(BaseModel):
     id: UUID
     name: str
@@ -78,5 +95,13 @@ class EntryResponse(BaseModel):
     entry_type: str
     description: Optional[str] = None
     created_at: str
+
+
+class CreateEntryRequest(BaseModel):
+    customer_id: UUID
+    amount: float
+    entry_type: str
+    description: Optional[str] = None
+    confirmed: bool = False
 
 
