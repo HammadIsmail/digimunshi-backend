@@ -48,8 +48,93 @@ RESPONSES = {
 }
 
 
+COMMON_URDU_TRANSLITERATION = {
+    "ali": "علی",
+    "hammad": "حماد",
+    "hamad": "حماد",
+    "ahmed": "احمد",
+    "ahmad": "احمد",
+    "aslam": "اسلم",
+    "kamran": "کامران",
+    "bilal": "بلال",
+    "usman": "عثمان",
+    "osman": "عثمان",
+    "zubair": "زبیر",
+    "tariq": "طارق",
+    "waqas": "وقاص",
+    "rashid": "راشد",
+    "imran": "عمران",
+    "babar": "بابر",
+    "rizwan": "رضوان",
+    "faisal": "فیصل",
+    "farhan": "فرحان",
+    "kashif": "کاشف",
+    "irfan": "عرفان",
+    "sajid": "ساجد",
+    "shahid": "شاہد",
+    "zahid": "زاہد",
+    "naveed": "نوید",
+    "waseem": "وسیم",
+    "wasim": "وسیم",
+    "shoaib": "شعیب",
+    "akram": "اکرم",
+    "javed": "جاوید",
+    "noman": "نعمان",
+    "salman": "سلمان",
+    "adnan": "عدنان",
+    "hamza": "حمزہ",
+    "umer": "عمر",
+    "umar": "عمر",
+    "omar": "عمر",
+    "hassan": "حسن",
+    "hasan": "حسن",
+    "hussain": "حسین",
+    "mohammad": "محمد",
+    "muhammad": "محمد",
+    "khan": "خان",
+    "malik": "ملک",
+    "chaudhry": "چوہدری",
+    "chaudhary": "چوہدری",
+    "bhai": "بھائی",
+    "sahab": "صاحب",
+    "bed": "بیڈ",
+    "cheeni": "چینی",
+    "chini": "چینی",
+    "doodh": "دودھ",
+    "aata": "آٹا",
+    "ghee": "گھی",
+    "tel": "تیل",
+    "chawal": "چاول",
+    "sabun": "صابن",
+    "chai": "چائے",
+}
+
+def to_urdu_script(text: Optional[str]) -> str:
+    if not text:
+        return ""
+    text_clean = text.strip()
+    # Check if string already contains mostly Arabic/Urdu unicode chars
+    urdu_chars = sum(1 for c in text_clean if '\u0600' <= c <= '\u06FF')
+    if urdu_chars > 0 and urdu_chars >= len(text_clean) / 2:
+        return text_clean
+
+    # Convert Latin/Roman Urdu words into pure Urdu script
+    words = text_clean.split()
+    converted_words = []
+    for w in words:
+        w_lower = w.lower().strip(".,!?:;'\"")
+        converted_words.append(COMMON_URDU_TRANSLITERATION.get(w_lower, w))
+    return " ".join(converted_words)
+
+
 def get_response_text(key: str, **kwargs) -> str:
-    return RESPONSES.get(key, "سمجھ نہیں آیا، دوبارہ بولیے۔").format(**kwargs)
+    cleaned = {}
+    for k, v in kwargs.items():
+        if k in ("name", "item", "options") and isinstance(v, str):
+            cleaned[k] = to_urdu_script(v)
+        else:
+            cleaned[k] = v
+    return RESPONSES.get(key, "سمجھ نہیں آیا، دوبارہ بولیے۔").format(**cleaned)
 
 
 def balance_expression():
@@ -213,7 +298,7 @@ async def process_voice(
         if not debtors:
             response_text = "اس وقت کسی بھی گاہک کا کوئی ادھار باقی نہیں ہے۔"
         else:
-            debtor_phrases = [f"{d.name} کے {int(d.balance)} روپے" for d in debtors[:5]]
+            debtor_phrases = [f"{to_urdu_script(d.name)} کے {int(d.balance)} روپے" for d in debtors[:5]]
             if len(debtor_phrases) == 1:
                 response_text = f"صرف {debtor_phrases[0]} ادھار باقی ہے۔"
             else:
@@ -233,7 +318,7 @@ async def process_voice(
     if intent == "add_customer" and customer_name:
         matches = await find_matching_customers(db, current_shop.id, customer_name)
         if len(matches) > 0:
-            response_text = f"{matches[0].name} pehle se khate mein mojood hain."
+            response_text = f"{to_urdu_script(matches[0].name)} پہلے سے کھاتے میں موجود ہیں۔"
             audio_url = await synthesize_speech(response_text)
             return VoiceProcessResponse(
                 transcript=transcript, intent=intent, requires_confirmation=False,
@@ -245,7 +330,7 @@ async def process_voice(
             new_customer = Customer(shop_id=current_shop.id, name=customer_name)
             db.add(new_customer)
             await db.flush()
-            response_text = f"ٹھیک ہے، {customer_name} کا نیا کھاتہ کھول دیا گیا ہے۔"
+            response_text = f"ٹھیک ہے، {to_urdu_script(customer_name)} کا نیا کھاتہ کھول دیا گیا ہے۔"
             audio_url = await synthesize_speech(response_text)
             return VoiceProcessResponse(
                 transcript=transcript, intent=intent, requires_confirmation=False,
@@ -276,7 +361,7 @@ async def process_voice(
     if intent == "query_balance_single" and customer_name:
         matches = await find_matching_customers(db, current_shop.id, customer_name)
         if len(matches) == 0:
-            response_text = f"{customer_name} نام کا کوئی گاہک کھاتے میں موجود نہیں ہے۔"
+            response_text = f"{to_urdu_script(customer_name)} نام کا کوئی گاہک کھاتے میں موجود نہیں ہے۔"
             audio_url = await synthesize_speech(response_text)
             return VoiceProcessResponse(
                 transcript=transcript, intent=intent, requires_confirmation=False,
@@ -360,7 +445,7 @@ async def process_voice(
 
 
 
-            response_text = f"{customer_name} نام کا کوئی گاہک کھاتے میں موجود نہیں ہے۔"
+            response_text = f"{to_urdu_script(customer_name)} نام کا کوئی گاہک کھاتے میں موجود نہیں ہے۔"
             audio_url = await synthesize_speech(response_text)
             return VoiceProcessResponse(
                 transcript=transcript, intent=intent, requires_confirmation=False,

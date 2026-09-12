@@ -17,9 +17,9 @@ GROQ_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "customer_name": {"type": "string", "description": "Customer name in English or Urdu script"},
+                    "customer_name": {"type": "string", "description": "Customer name strictly in authentic Urdu script (نستعلیق / اردو رسم الخط e.g. علی, حماد, اسلم, کامران)"},
                     "amount": {"type": "number", "description": "Amount in Pakistani Rupees"},
-                    "item": {"type": "string", "description": "Item, goods, or reason for udhaar (e.g. 'bed', 'raashan', 'cheeni', 'cement', 'mobile', 'doodh', etc.). Extract if mentioned, otherwise omit."}
+                    "item": {"type": "string", "description": "Item, goods, or reason for udhaar strictly in authentic Urdu script (e.g. بیڈ, راشن, چینی, سیمنٹ, دودھ, پنکھا). Extract if mentioned, otherwise omit."}
                 },
                 "required": ["customer_name", "amount"]
             }
@@ -37,12 +37,11 @@ GROQ_TOOLS = [
         "type": "function",
         "function": {
             "name": "record_payment",
-            "description": "Record a payment or balance reduction when a customer pays back money, clears part of their debt, or user asks to reduce/deduct (e.g. 'Ali ke khate me se 500 kam kar do', '500 vasool ho gaye', '500 jama kar do', '500 wapas दिए', '500 minus kar do').",
-
+            "description": "Record a payment or balance reduction when a customer pays back money, clears part of their debt, or user asks to reduce/deduct (e.g. 'Ali ke khate me se 500 kam kar do', '500 vasool ho gaye', '500 jama kar do', '500 wapas diye', '500 minus kar do').",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "customer_name": {"type": "string", "description": "Customer name in English or Urdu script"},
+                    "customer_name": {"type": "string", "description": "Customer name strictly in authentic Urdu script (e.g. علی, حماد, اسلم)"},
                     "amount": {"type": "number", "description": "Amount in Pakistani Rupees to reduce/pay back"}
                 },
                 "required": ["customer_name", "amount"]
@@ -57,7 +56,7 @@ GROQ_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "customer_name": {"type": "string", "description": "Customer name"}
+                    "customer_name": {"type": "string", "description": "Customer name strictly in authentic Urdu script (e.g. علی, حماد, اسلم)"}
                 },
                 "required": ["customer_name"]
             }
@@ -71,7 +70,7 @@ GROQ_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "customer_name": {"type": "string", "description": "Customer name"}
+                    "customer_name": {"type": "string", "description": "Customer name strictly in authentic Urdu script (e.g. علی, حماد, اسلم)"}
                 },
                 "required": ["customer_name"]
             }
@@ -93,7 +92,7 @@ GROQ_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "customer_name": {"type": "string", "description": "Customer name"}
+                    "customer_name": {"type": "string", "description": "Customer name strictly in authentic Urdu script (e.g. علی, حماد, اسلم)"}
                 },
                 "required": ["customer_name"]
             }
@@ -117,16 +116,20 @@ GROQ_TOOLS = [
 
 GROQ_SYSTEM_PROMPT = """You are an expert AI assistant for a Pakistani shopkeeper's digital ledger app (DigiMunshi).
 The user speaks in Urdu or Roman Urdu. Call the appropriate tool based on user intent:
-1. When debt/credit is ADDED or loaned: (udhaar likho, udhaar do, mazeed likh do, baqi likho, bed udhaar liya, cheeni li, rashan liya) -> call `record_udhaar`. If the user mentions what item or goods were taken (e.g. 'bed', 'raashan', 'cheeni', 'cement', 'doodh'), extract it in the `item` field.
+1. When debt/credit is ADDED or loaned: (udhaar likho, udhaar do, mazeed likh do, baqi likho, bed udhaar liya, cheeni li, rashan liya) -> call `record_udhaar`.
 2. When the user asks for the list or names of customers who owe money: (gahkon ke naam batao jin ka udhaar rehta hai, kin kin ka udhaar baqi hai, kis kis se paise lene hain, udhaar walon ke naam) -> call `list_debtors`.
-3. When debt is REDUCED, subtracted, or paid back: (kam kar do, minus kar do, jama kar lo, vasool ho gaye, wapas diye, paise de diye, kat lo) -> call `record_payment`
-4. When checking how much a single customer owes: (kitna udhaar hai, kitne paise hain, kitna baqi hai) -> call `query_balance_single`
-5. When checking total overall udhaar amount for all customers: (sab ka kitna hai, kul udhaar kitna hai, total baqi) -> call `query_balance_all`
-6. When wiping/clearing a khata completely: (khata clear kar do, poora mita do, khatam kar do) -> call `delete_customer_khata`
+3. When debt is REDUCED, subtracted, or paid back: (kam kar do, minus kar do, jama kar lo, vasool ho gaye, wapas diye, paise de diye, kat lo) -> call `record_payment`.
+4. When checking how much a single customer owes: (kitna udhaar hai, kitne paise hain, kitna baqi hai) -> call `query_balance_single`.
+5. When checking total overall udhaar amount for all customers: (sab ka kitna hai, kul udhaar kitna hai, total baqi) -> call `query_balance_all`.
+6. When wiping/clearing a khata completely: (khata clear kar do, poora mita do, khatam kar do) -> call `delete_customer_khata`.
 7. When answering a confirmation prompt:
    - haan, ji, theek hai, sahi hai, likh do, kar do, haan kar do -> confirmed: true
    - nahi, cancel, mat karo, rehne do, roko -> confirmed: false
-Always accurately extract the customer name, item (if mentioned), and numerical amount in Rupees (e.g. 'paanch sau' -> 500, 'teen sau' -> 300, 'hazar' -> 1000)."""
+
+CRITICAL RULE FOR FLAWLESS URDU PRONUNCIATION:
+You MUST ALWAYS output `customer_name` and `item` strictly in authentic Urdu script (نستعلیق / اردو رسم الخط) e.g. 'علی', 'حماد', 'اسلم', 'کامران', 'بیڈ', 'چینی', 'دودھ', 'راشن', 'سیمنٹ'.
+NEVER output customer_name or item in Roman Urdu or English alphabet (do NOT output 'Ali', output 'علی'; do NOT output 'bed', output 'بیڈ'; do NOT output 'Hammad', output 'حماد').
+Always accurately extract numerical amount in Rupees (e.g. 'paanch sau' -> 500, 'teen sau' -> 300, 'hazar' -> 1000, 'bees hazar' -> 20000)."""
 
 
 
