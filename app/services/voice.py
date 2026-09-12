@@ -1,5 +1,6 @@
 import os
 import uuid
+import base64
 import logging
 from typing import Optional
 import httpx
@@ -12,7 +13,7 @@ settings = get_settings()
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 AUDIO_DIR = os.path.join(BASE_DIR, "static", "audio")
-os.makedirs(AUDIO_DIR, exist_ok=True)
+
 
 MIME_MAP = {
     ".wav": "audio/wav",
@@ -190,7 +191,7 @@ async def synthesize_speech(text: str, voice_id: str | None = None) -> str | Non
     """
     Send text to UpliftAI Orator TTS API using Prime Time Anchor voice.
     Docs: https://docs.upliftai.org/orator
-    Saves generated MP3 to static audio cache and returns the endpoint URL.
+    Returns audio as a data URI: 'data:audio/mp3;base64,...' (Zero disk writes, 100% stateless).
     """
     if not text or not settings.UPLIFTAI_API_KEY:
         return None
@@ -219,15 +220,12 @@ async def synthesize_speech(text: str, voice_id: str | None = None) -> str | Non
             if not audio_bytes:
                 return None
 
-            audio_id = str(uuid.uuid4())
-            audio_path = os.path.join(AUDIO_DIR, f"{audio_id}.mp3")
-            with open(audio_path, "wb") as f:
-                f.write(audio_bytes)
-
-            return f"/voice/audio/{audio_id}.mp3"
+            audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+            return f"data:audio/mp3;base64,{audio_base64}"
     except Exception as e:
         logger.warning(f"Uplift TTS speech synthesis failed: {e}")
         return None
+
 
 
 async def create_realtime_session(participant_name: str = "Shopkeeper", assistant_id: str | None = None) -> dict:
