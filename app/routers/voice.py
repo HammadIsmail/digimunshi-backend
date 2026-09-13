@@ -771,3 +771,46 @@ async def get_realtime_session(
         return session
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Failed to create Uplift realtime session: {str(e)}")
+
+
+@router.post("/voice/transcribe")
+async def transcribe_voice_input(
+    request: Request,
+):
+    """
+    Public speech-to-text endpoint for field inputs (name, shop name, etc.)
+    without requiring authentication.
+    """
+    content_type_header = request.headers.get("content-type", "")
+
+    if "application/json" in content_type_header:
+        body = await request.json()
+        audio_b64 = body.get("audio_base64", "")
+        fmt = body.get("format", "m4a").lower()
+        audio_bytes = base64.b64decode(audio_b64) if audio_b64 else b""
+        filename = f"recording.{fmt}"
+        content_type = "audio/wav" if fmt == "wav" else "audio/mp4"
+    else:
+        form = await request.form()
+        audio = form.get("audio")
+        if hasattr(audio, "read"):
+            audio_bytes = await audio.read()
+            filename = getattr(audio, "filename", "recording.m4a")
+            content_type = getattr(audio, "content_type", "audio/mp4")
+        else:
+            audio_bytes = b""
+            filename = "recording.m4a"
+            content_type = "audio/mp4"
+
+    if not audio_bytes or len(audio_bytes) < 300:
+        return {"transcript": ""}
+
+    try:
+        stt_result = await transcribe_audio(audio_bytes, filename, content_type)
+        transcript = stt_result.get("text", "").strip()
+        # Remove trailing periods, full stops, or commas (common Whisper artifacts)
+        transcript = transcript.rstrip("۔.،,! \t\n")
+        return {"transcript": transcript}
+    except Exception as e:
+        logger.error(f"Field transcription failed: {e}")
+        return {"transcript": ""}

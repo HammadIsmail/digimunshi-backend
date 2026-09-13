@@ -133,9 +133,18 @@ async def transcribe_audio(
     Send audio to UpliftAI Speech-to-Text API (Beta).
     Model: 'scribe' (Urdu general vocabulary).
     """
-    if not audio_bytes or len(audio_bytes) < 800:
+    if not audio_bytes or len(audio_bytes) < 500:
         logger.warning(f"Audio payload too small: {len(audio_bytes) if audio_bytes else 0} bytes")
         return {"text": "", "confidence": 0.0}
+
+    # If Groq Whisper is configured, try it first for ultra-fast (~200ms) accurate Urdu transcription
+    if settings.GROQ_API_KEY:
+        try:
+            res = await transcribe_with_groq_whisper(audio_bytes, filename)
+            if res.get("text"):
+                return res
+        except Exception as e:
+            logger.warning(f"Groq Whisper STT failed, falling back to Uplift: {e}")
 
     # Ensure audio is standard 16kHz mono WAV so Uplift STT decodes without error
     if not (audio_bytes[:4] == b"RIFF" and audio_bytes[8:12] == b"WAVE"):

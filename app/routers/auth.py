@@ -52,6 +52,13 @@ async def register(shop_data: ShopRegister, db: AsyncSession = Depends(get_db)):
     )
 
 
+@router.get("/check-phone")
+async def check_phone(phone_number: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Shop).where(Shop.phone_number == phone_number))
+    shop = result.scalar_one_or_none()
+    return {"exists": shop is not None}
+
+
 @router.post("/login", response_model=TokenResponse)
 async def login(login_data: ShopLogin, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Shop).where(Shop.phone_number == login_data.phone_number))
@@ -59,8 +66,8 @@ async def login(login_data: ShopLogin, db: AsyncSession = Depends(get_db)):
 
     if shop is None:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid phone number or PIN"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Account not found"
         )
 
     if shop.locked_until and shop.locked_until > datetime.now(timezone.utc):
@@ -76,7 +83,7 @@ async def login(login_data: ShopLogin, db: AsyncSession = Depends(get_db)):
         await db.flush()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid phone number or PIN"
+            detail="Invalid PIN"
         )
 
     shop.failed_login_count = 0
