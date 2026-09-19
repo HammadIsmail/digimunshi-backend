@@ -39,6 +39,13 @@ app.include_router(ledger.router)
 app.include_router(voice.router)
 
 
+@app.get("/")
 @app.get("/health")
+@app.get("/api/health")
+@app.get("/api/index.py")
 async def health_check():
-    return {"status": "healthy"}
+    return {
+        "status": "healthy",
+        "app": "digiMunshi API",
+        "version": "1.1.0"
+    }
